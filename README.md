@@ -5,7 +5,7 @@
 **Qwen3.5-0.8B writes a Bend program. Then the same model type-checks it and runs it inside its own
 forward pass.** No compiler, no interpreter, no tool call: one checkpoint, one `forward()` per token.
 
-[▶ 15-second demo](assets/qwenbend.mp4)
+[▶ 15-second demo](assets/qwenbend.mp4) · [How it works](docs/HOW_IT_WORKS.md)
 
 ```
 you:   Sum 22 copies of 35.
@@ -120,7 +120,7 @@ python bendvm/merge.py 5                                                  # end 
 - The LoRA was trained with `mlx_lm` (rank 8, scale 20, lr 1e-4, batch 2, 16 layers). The 400-step
   checkpoint was best by validation loss.
 
-**Design notes:** [docs/DESIGN.md](docs/DESIGN.md).
+**How it works (explainer):** [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md). **Design notes:** [docs/DESIGN.md](docs/DESIGN.md).
 
 ## Credits
 
