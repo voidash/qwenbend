@@ -51,6 +51,17 @@ a byte of the value it computed. The firmware running on that CPU
 
 The model reads its own trace back on the next step; that is the only state it carries forward.
 
+**How Bend2 was ported:** there is no host compiler, so the whole front end runs on the CPU
+inside the weights. It was written four times, each version checked against the last, back to
+real Bend2:
+- `bendlite_ref.py`: reference interpreter plus Bend2's checks; 1,100/1,100 values equal to real
+  Bend2, 0 unsound;
+- `bytecode.py`: compile pass plus threaded evaluator, in Python;
+- `firmware2.py`: the same as 2,230 instructions of BVM assembly; 0 mismatches on 2,389 programs;
+- the circuit: exact, token for token.
+
+Details: [docs/PORTING_BEND2.md](docs/PORTING_BEND2.md).
+
 Layer layout, hidden 4096:
 - 10 engine layers;
 - 1 exit layer, which zeroes the engine's dims exactly before Qwen sees them;
