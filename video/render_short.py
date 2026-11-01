@@ -22,7 +22,7 @@ from trace import END, LAST, TraceMachine  # noqa: E402
 from paths import qwen_dir  # noqa: E402
 
 sys.path.insert(0, str(HERE))
-from render_video import clock, phase  # noqa: E402
+from render_video import clock, phase, trace_lines  # noqa: E402
 
 LW, LH, UP, FPS = 640, 360, 2, 30
 BG, DEEP, CREAM, DIM = (56, 26, 75), (36, 11, 53), (245, 228, 205), (150, 120, 170)
@@ -106,6 +106,8 @@ def main():
     prog_text = "".join(pieces[:-1]).strip("\n")
     nq = len(pieces)
     mem0, regs, pcs, writes = replay(engine, Stored(nn + prog_ids, words))
+    lines = trace_lines(engine)
+    line_tok = np.array([ln[0] for ln in lines])  # token index of each line's INS
     q_t = [s - st[0] for s in st[1:1 + nq]]
     e_t = np.array([s - st[0] for s in st[1 + nq:]])
     logo = Image.open(HERE.parent / "assets" / "logo.png").convert("RGB")
@@ -129,39 +131,52 @@ def main():
             d.text((12, 302), str(answer), font=F["big"], fill=GOLD)
 
     def right(d, k, active, label, label_c, note):
-        x0, y0 = 232, 8
-        d.text((x0, y0), "the engine's state, held in Gated DeltaNet heads", font=F["sm"], fill=DIM)
+        # the decoded trace: every line is a token the model emitted (INS pc) plus its value tokens
+        x0, y0 = 226, 6
+        d.rectangle((x0, y0, 466, 330), outline=mix(label_c, 0.6))
+        d.text((x0 + 4, y0 + 3), "the model's next tokens, decoded" if k is not None else
+               "the model's next tokens (after <|im_end|>)", font=F["sm"], fill=DIM)
+        if k is not None:
+            li = int(np.searchsorted(line_tok, k, side="right"))
+            for i, (_, pc, text, val) in enumerate(lines[max(0, li - 28):li]):
+                yy = y0 + 15 + 11 * i
+                c = {"lex": GOLD, "compile": PURPLE, "run": TEAL, "boot": DIM}[phase(pc) if pc is not None else "run"]
+                d.text((x0 + 4, yy), f"{pc if pc is not None else '':>4}", font=F["code"], fill=DIM)
+                d.text((x0 + 32, yy), text.replace("4294967295", "-1"), font=F["code"], fill=c)
+                if val is not None:
+                    d.text((x0 + 178, yy), f"={val}", font=F["code"], fill=CREAM)
+        # the state column: registers (bits) and the 8,192-word memory (64 heads x 128 rows)
+        sx = 474
+        d.text((sx, y0), "registers", font=F["sm"], fill=DIM)
         r = regs[k] if k is not None else [0] * 16
-        d.text((x0, y0 + 14), "regs", font=F["sm"], fill=DIM)
         for i in range(16):
             for b in range(32):
                 on = (r[i] >> (31 - b)) & 1
-                xx, yy = x0 + 30 + 6 * b, y0 + 14 + 4 * i
-                d.rectangle((xx, yy, xx + 4, yy + 2), fill=TEAL if on else mix(TEAL, 0.18))
-        d.text((x0, y0 + 82), "memory: 8,192 words = 64 heads x 128 rows", font=F["sm"], fill=DIM)
-        gx, gy = x0, y0 + 94
+                xx, yy = sx + 4 * b, y0 + 12 + 4 * i
+                d.rectangle((xx, yy, xx + 2, yy + 2), fill=TEAL if on else mix(TEAL, 0.18))
+        d.text((sx, y0 + 80), "memory: DeltaNet heads", font=F["sm"], fill=DIM)
+        gy = y0 + 92
         for a in range(WORDS):
-            xx, yy = gx + 6 * (a // 128), gy + 2 * (a % 128)
+            xx, yy = sx + 2 * (a // 128), gy + a % 128
             if k is not None and 0 <= k - seen[a] < FLASH:
                 c = CREAM
             elif mem[a]:
                 c = mix(region_color(a), 0.9)
             else:
                 c = mix(region_color(a), 0.15)
-            d.line((xx, yy, xx + 4, yy), fill=c)
-        lx = x0
-        for _, _, name, c in REGIONS:
-            d.rectangle((lx, 352 - 22, lx + 4, 352 - 18), fill=c)
-            d.text((lx + 7, 352 - 25), name, font=F["sm"], fill=DIM)
-            lx += 18 + d.textlength(name, font=F["sm"])
-        d.text((x0, 352 - 10), label, font=F["mid"], fill=label_c)
-        d.text((LW - 14 - d.textlength(note, font=F["sm"]), 352 - 8), note, font=F["sm"], fill=DIM)
-        bx = 622  # layer bar: 10 engine + 1 exit + 24 Qwen
+            d.line((xx, yy, xx + 1, yy), fill=c)
+        ly = gy + 136
+        for i, (_, _, name, c) in enumerate(REGIONS):
+            d.rectangle((sx, ly + 10 * i, sx + 4, ly + 4 + 10 * i), fill=c)
+            d.text((sx + 7, ly - 3 + 10 * i), name, font=F["sm"], fill=DIM)
+        d.text((x0, 336), label, font=F["mid"], fill=label_c)
+        d.text((LW - 14 - d.textlength(note, font=F["sm"]), 340), note, font=F["sm"], fill=DIM)
+        bx = 626  # layer bar: 10 engine + 1 exit + 24 Qwen
         for i in range(35):
-            yy = 20 + 8 * i
+            yy = 8 + 9 * i
             c = TEAL if i < 10 else (DIM if i == 10 else PURPLE)
             lit = (active == "engine" and i < 10) or (active == "qwen" and i > 10)
-            d.rectangle((bx, yy, bx + 6, yy + 5), fill=c if lit else mix(c, 0.25))
+            d.rectangle((bx, yy, bx + 6, yy + 6), fill=c if lit else mix(c, 0.25))
 
     v = Video(out)
     # 1. logo (1.5 s)
