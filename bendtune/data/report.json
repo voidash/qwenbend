@@ -1,0 +1,68 @@
+{
+  "seed": 0,
+  "held_out_families": [
+    "digit_count",
+    "reverse_digits",
+    "sum_multiples"
+  ],
+  "rejects": [],
+  "train": {
+    "kept": 800,
+    "drawn": 800,
+    "families": {
+      "gcd": 69,
+      "max": 78,
+      "parity": 55,
+      "triangle": 56,
+      "absdiff": 67,
+      "digit_sum": 76,
+      "power": 58,
+      "factorial": 37,
+      "fib": 53,
+      "arith": 69,
+      "sum_squares": 49,
+      "sum_const": 67,
+      "count_multiples": 66
+    }
+  },
+  "valid": {
+    "kept": 80,
+    "drawn": 80,
+    "families": {
+      "parity": 8,
+      "sum_squares": 3,
+      "fib": 3,
+      "arith": 13,
+      "max": 9,
+      "triangle": 5,
+      "absdiff": 10,
+      "count_multiples": 3,
+      "power": 11,
+      "sum_const": 6,
+      "gcd": 6,
+      "factorial": 1,
+      "digit_sum": 2
+    }
+  },
+  "test": {
+    "kept": 200,
+    "drawn": 200,
+    "families": {
+      "sum_const": 9,
+      "count_multiples": 16,
+      "arith": 7,
+      "factorial": 3,
+      "power": 10,
+      "digit_sum": 16,
+      "gcd": 8,
+      "max": 5,
+      "triangle": 6,
+      "parity": 7,
+      "absdiff": 7,
+      "fib": 6,
+      "sum_multiples": 29,
+      "digit_count": 39,
+      "reverse_digits": 32
+    }
+  }
+}
