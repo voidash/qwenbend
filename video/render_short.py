@@ -74,6 +74,64 @@ def canvas():
     return img, d
 
 
+SR = 44100
+NOTE = {n: 440.0 * 2 ** ((i - 9) / 12) for i, n in enumerate(["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"])}
+
+
+def hz(name):
+    """'C5' -> frequency."""
+    return NOTE[name[:-1]] * 2 ** (int(name[-1]) - 4)
+
+
+def tone(freq, dur, vol=0.18, duty=0.25, decay=6.0):
+    """A pulse-wave note with a fast attack and exponential decay (8-bit style)."""
+    t = np.arange(int(dur * SR)) / SR
+    wave = np.where((t * freq) % 1.0 < duty, 1.0, -1.0)
+    env = np.minimum(1.0, t / 0.004) * np.exp(-decay * t)
+    return vol * wave * env
+
+
+def noise(dur, vol=0.05):
+    t = np.arange(int(dur * SR)) / SR
+    return vol * np.random.default_rng(7).uniform(-1, 1, len(t)) * np.exp(-60 * t)
+
+
+def soundtrack(events, seconds):
+    """events: [(time s, kind, arg)] -> mono float track."""
+    out = np.zeros(int(seconds * SR) + SR)
+
+    def put(t0, x):
+        i = int(t0 * SR)
+        out[i:i + len(x)] += x[:len(out) - i]
+
+    scales = {"lex": ["A4", "C5", "E5", "G5"], "compile": ["D5", "F5", "A5", "C6"],
+              "run": ["C5", "E5", "G5", "B5"], "boot": ["C5", "G5", "C5", "G5"]}
+    bass = {"lex": "A2", "compile": "D3", "run": "C3", "boot": "C3"}
+    for t0, kind, arg in events:
+        if kind == "intro":
+            for i, n in enumerate(["C5", "E5", "G5", "C6"]):
+                put(t0 + 0.11 * i, tone(hz(n), 0.35, 0.16))
+        elif kind == "type":
+            put(t0, tone(hz(["E6", "G6", "A6", "C7"][arg % 4]), 0.05, 0.07, 0.5, 40))
+        elif kind == "step":
+            ph, i = arg
+            put(t0, tone(hz(scales[ph][i % 4]), 0.12, 0.11, 0.25, 18))
+            if i % 2 == 0:
+                put(t0, noise(0.05))
+            if i % 4 == 0:
+                put(t0, tone(hz(bass[ph]), 0.5, 0.13, 0.5, 3))
+        elif kind == "phase":
+            for j, n in enumerate(scales[arg][:3]):
+                put(t0 + 0.05 * j, tone(hz(n) * 2, 0.15, 0.09, 0.125, 10))
+        elif kind == "win":
+            for i, n in enumerate(["G5", "C6", "E6", "G6"]):
+                put(t0 + 0.1 * i, tone(hz(n), 0.25, 0.15))
+            for n in ("C5", "E5", "G5", "C6"):
+                put(t0 + 0.45, tone(hz(n), 1.4, 0.07, 0.5, 2))
+    peak = np.abs(out).max()
+    return out / peak * 0.6 if peak > 0 else out
+
+
 def replay(engine, prog):
     """Per engine token: registers, latched pc, and the memory write (addr, value) it carried."""
     tm = TraceMachine(FIRMWARE, prog)
@@ -178,7 +236,9 @@ def main():
             lit = (active == "engine" and i < 10) or (active == "qwen" and i > 10)
             d.rectangle((bx, yy, bx + 6, yy + 6), fill=c if lit else mix(c, 0.25))
 
-    v = Video(out)
+    silent = out.with_suffix(".silent.mp4")
+    v = Video(silent)
+    events = [(0.05, "intro", None)]
     # 1. logo (1.5 s)
     img, d = canvas()
     img.paste(logo_big, ((LW - 256) // 2, 60))
@@ -191,7 +251,10 @@ def main():
     n = int(2.5 * FPS)
     for f in range(n):
         tt = (f + 1) / n * q_t[-1]
+        shown_before = shown if f else 0
         shown = sum(1 for x in q_t[:-1] if x <= tt)
+        if shown > shown_before and f % 2 == 0:
+            events.append((v.frames / FPS, "type", shown))
         for slot in tok_slots[:len(nn) + shown]:
             mem[slot] = mem0[slot]
         img, d = canvas()
@@ -213,6 +276,11 @@ def main():
                 mem[a], seen[a] = val, done
             done += 1
         ph = phase(pcs[k]) if pcs[k] is not None else "run"
+        if f == 0 or ph != last_ph:
+            events.append((v.frames / FPS, "phase", ph))
+        last_ph = ph
+        if f % 4 == 0:  # an 8-bit pulse at 7.5 notes/s, in the phase's scale
+            events.append((v.frames / FPS, "step", (ph, f // 4)))
         label, c = {"lex": ("SAME MODEL READS IT", GOLD), "compile": ("SAME MODEL CHECKS IT: BEND2 RULES", GOLD),
                     "run": ("SAME MODEL RUNS IT", TEAL), "boot": ("SAME MODEL BOOTS", TEAL)}[ph]
         img, d = canvas()
@@ -221,13 +289,29 @@ def main():
         v.add(img)
 
     # 4. the answer (2 s)
+    events.append((v.frames / FPS, "win", None))
     img, d = canvas()
     left(d, img, prog_text, rec["result"], "answer, computed by the model")
     right(d, len(engine) - 1, "engine", "TRACE == REFERENCE, TOKEN FOR TOKEN", TEAL,
           f"{len(engine):,} tokens  {clock(st[-1] - rec['t0'])} real")
     v.add(img, int(2.0 * FPS))
     v.close()
-    print(f"wrote {out}: {v.frames} frames, {v.frames / FPS:.1f} s")
+    # the soundtrack, muxed onto the frames
+    import wave
+    track = soundtrack(events, v.frames / FPS)[:int(v.frames / FPS * SR)]
+    wav = out.with_suffix(".wav")
+    with wave.open(str(wav), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(SR)
+        w.writeframes((track * 32767).astype(np.int16).tobytes())
+    r = subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(silent), "-i", str(wav), "-c:v", "copy",
+                        "-c:a", "aac", "-b:a", "160k", "-shortest", "-movflags", "+faststart", str(out)])
+    if r.returncode != 0:
+        raise RuntimeError("ffmpeg mux failed")
+    silent.unlink()
+    wav.unlink()
+    print(f"wrote {out}: {v.frames} frames, {v.frames / FPS:.1f} s, with a {len(events)}-event soundtrack")
 
 
 if __name__ == "__main__":
