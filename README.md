@@ -109,6 +109,34 @@ Layer layout, hidden 4096:
 | LoRA (`bendtune/eval.py`, 200 test items, real Bend2) | 42% correct (80% in-distribution, 4% held-out); base model 0% |
 | speed | about 20 tokens/s; a run takes 7–14 minutes |
 
+## Benchmark: is it better than just asking the model?
+
+![benchmark](assets/benchmark.png)
+
+On these 200 small tasks, **no**:
+
+| | correct |
+|---|---|
+| Qwen3.5-0.8B answering directly (no thinking) | **49%** (98/200) |
+| Qwen3.5-0.8B with thinking (4k-token cap) | 35% (70/200) |
+| QwenBend's writer produces a correct program (checked by real Bend2) | 42% (84/200) |
+| 20 uniformly sampled tasks: direct answer | 70% (14/20) |
+| 20 uniformly sampled tasks: **QwenBend end to end** | 50% (10/20): 9/10 familiar task families, 1/10 held-out |
+| QwenBend engine: trace == reference interpreter | **100% (20/20)** |
+
+- The engine never miscomputes.
+- Every failure is the 0.8B writer:
+  - 8 of the 10 failures are `digit_count` programs (a task family it never trained on) that
+    break Bend2's rules and end in `FAIL`;
+  - the other 2 are wrong programs.
+- The numbers in these tasks are small enough that the base model's own arithmetic often works.
+  QwenBend's exactness would only pay off on computations a model can't do in its head, and those
+  are untested here.
+- Reproduce with:
+  - `python bendtune/bench_direct.py`;
+  - `python bendvm/bench_e2e.py 10` (20 runs, about 3 h on an M4 Pro).
+- Logs are in `bendtune/logs/`.
+
 **Size, honestly:**
 - 3.97B dense parameters: **0.753B are Qwen's, 52.9M are the engine's nonzero weights**, and the
   rest is zero padding from widening the hidden size to 4096.
