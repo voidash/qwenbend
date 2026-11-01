@@ -56,6 +56,26 @@ Layer layout, hidden 4096:
 - 1 exit layer, which zeroes the engine's dims exactly before Qwen sees them;
 - Qwen's 24 layers, zero-padded.
 
+## Why
+
+- **Where computation can live.** LLMs can't be trusted to compute: they approximate arithmetic
+  and lose track of state over long loops. The usual fix is a tool call: leave the model, run
+  Python, come back. QwenBend runs the exact computation **inside the model's own weights**, in
+  the same forward pass that wrote the code. Neural for intent, exact symbolic for execution, in
+  one network, with no glue.
+- **A checkable record instead of a story.** A chain of thought is not a faithful record of how
+  the model got its answer. QwenBend's trace is: every instruction and value is a token, Bend2's
+  static rules are checked before anything runs, and anyone can replay the trace with the
+  reference VM.
+- **Why not just call Python?** For speed and cost you should: this is millions of times slower
+  than a CPU. It is worth it where:
+  - there is no tool boundary (on-device, air-gapped, one model artifact);
+  - determinism and an audit trail matter;
+  - you need ground truth for interpretability (a fully known circuit inside a real LLM);
+  - you look ahead: the engine costs about 53M weights whatever model hosts it, so a stronger
+    writer plus handing the result back gives models that run checks of their own reasoning in
+    their own weights.
+
 ## What it verifies, and what it doesn't
 
 - ✅ The program passes Bend2's static rules. A program that breaks them fails inside the forward

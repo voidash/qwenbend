@@ -84,15 +84,10 @@ bf16 arithmetic has no rounding:
 
 ## 5. Why do this
 
-- **Exact computation without tools.** The model can carry out a long, exact computation (loops,
-  recursion, 32-bit arithmetic) in its own weights. There is no sandbox, no tool call and no
-  round trip, and no arithmetic hallucination.
-- **An audit trail.** The whole execution is a token trace, so a reader or a verifier can check
-  each step.
-- **It scales in the right direction.** The engine needs about 3,000 residual dims and 53M
-  nonzero weights whatever model it sits in. In a 0.8B model that forced the width from 1024 to
-  4096, so 3.97B dense parameters are mostly zeros. In a frontier-width model it would be a small
-  fraction of the width, and a stronger writer makes the "right program" part far more reliable.
+See the README's **Why** section. In short:
+- exact computation can live inside the model's weights, with no tool boundary;
+- the trace is a replayable record, unlike a chain of thought;
+- the engine's cost is fixed (about 53M weights), so it shrinks relative to bigger hosts.
 
 ## 6. The honest costs
 
